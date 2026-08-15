@@ -6,7 +6,7 @@ ARG MESHSENSE_URL="https://affirmatech.com/download/meshsense/meshsense-beta-arm
 ARG MESHSENSE_SHA256="04764cf33481ada042784b2c7b0b5a98e78cd0bb6b903487c1f66a41d105553f"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl libfuse2 python3-minimal zlib1g-dev \
+    && apt-get install -y --no-install-recommends ca-certificates curl libfuse2 nodejs python3-minimal zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp/meshsense
@@ -23,7 +23,9 @@ RUN python3 /tmp/meshsense-patch/patch-meshsense.py \
     && install -m 0644 /tmp/meshsense-patch/admin-login.js \
         squashfs-root/resources/app.asar.unpacked/resources/api/static/admin-login.js \
     && install -m 0644 /tmp/meshsense-patch/cleanup-sw.js \
-        squashfs-root/resources/app.asar.unpacked/resources/api/static/sw.js
+        squashfs-root/resources/app.asar.unpacked/resources/api/static/sw.js \
+    && find squashfs-root/resources/app.asar.unpacked/resources/api/static \
+        -type f -name '*.js' -exec node --check {} \;
 
 FROM debian:bookworm-slim
 

@@ -78,9 +78,11 @@ function sanitizePublicPacket(packet) {
     if (clean.data && typeof clean.data === 'object') {
         const safeFields = new Set([
             '$typeName', 'hwModel', 'id', 'isLicensed', 'longName', 'macaddr',
-            'publicKey', 'role', 'shortName', 'time', 'variant'
+            'publicKey', 'role', 'route', 'shortName', 'time', 'variant'
         ]);
         clean.data = Object.fromEntries(Object.entries(clean.data).filter(([key]) => safeFields.has(key)));
+        if (Array.isArray(clean.data.route))
+            clean.data.route = clean.data.route.filter(Number.isInteger).slice(0, 32);
     }
     return clean;
 }
@@ -310,6 +312,16 @@ asset_patches = (
         'ia.on("upsert",n=>{var e;Yh(zs)&&((e=n[0].message)!=null&&e.show)&&Ip.play()});',
         'ia.on("upsert",n=>{var e;window.dispatchEvent(new CustomEvent("meshsense:packet",{detail:n[0]})),Yh(zs)&&((e=n[0].message)!=null&&e.show)&&Ip.play()});ia.on("set",n=>{let e=Array.isArray(n[0])?n[0].reduce((t,i)=>(i.rxTime??0)>(t?.rxTime??0)?i:t,void 0):void 0,t=e&&(e.id??`${e.from}-${e.rxTime}`);e&&t!==window.__rcrLastPacketId&&(window.__rcrLastPacketId=t,window.dispatchEvent(new CustomEvent("meshsense:packet",{detail:e}))) });',
         "publish sanitized live packet events",
+    ),
+    (
+        '[n[36].to,...(r=(s=n[36])==null?void 0:s.data)==null?void 0:r.route,n[36].from]',
+        '[n[36].to,...(((r=(s=n[36])==null?void 0:s.data)==null?void 0:r.route)||[]),n[36].from]',
+        "guard initial route arrays",
+    ),
+    (
+        '[o[36].to,...(c=(a=o[36])==null?void 0:a.data)==null?void 0:c.route,o[36].from]',
+        '[o[36].to,...(((c=(a=o[36])==null?void 0:a.data)==null?void 0:c.route)||[]),o[36].from]',
+        "guard updated route arrays",
     ),
 )
 patch_counts = {label: 0 for _, _, label in asset_patches}

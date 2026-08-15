@@ -39,6 +39,8 @@ application = fetch(asset_match.group(1))
 assert "tile.openstreetmap.org/{z}/{x}/{y}.png?meshsense=20260815-1" in application
 assert "window.__rcrMeshMap" in application
 assert '"stroke-color":"rgba(128,255,91,0.78)"' in application
+assert "||[]),n[36].from]" in application
+assert "||[]),o[36].from]" in application
 
 cleanup_worker = fetch("/sw.js")
 assert "registration.unregister" in cleanup_worker
@@ -51,6 +53,7 @@ print(json.dumps({
     "read_only_ui": "ok",
     "packet_pulses": "ok",
     "known_links": "ok",
+    "missing_route_guard": "ok",
     "tile_cache_bust": "ok",
     "worker_cleanup": "ok",
 }))

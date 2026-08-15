@@ -33,6 +33,20 @@ def assert_redacted(state: dict) -> None:
         for packet in state.get("packets", [])
         if isinstance(packet.get("payloadVariant", {}).get("value"), dict)
     )
+    safe_data_fields = {
+        "$typeName", "hwModel", "id", "isLicensed", "longName", "macaddr",
+        "publicKey", "role", "route", "shortName", "time", "variant",
+    }
+    for packet in state.get("packets", []):
+        data = packet.get("data")
+        if not isinstance(data, dict):
+            continue
+        assert set(data) <= safe_data_fields
+        route = data.get("route")
+        if route is not None:
+            assert isinstance(route, list)
+            assert len(route) <= 32
+            assert all(isinstance(node_id, int) and not isinstance(node_id, bool) for node_id in route)
 
 
 async def verify() -> None:
