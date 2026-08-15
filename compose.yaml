@@ -1,0 +1,76 @@
+services:
+  meshsense:
+    image: canadaverse/meshsense:1.1.0-beta-arm64-04764cf3-r10
+    build:
+      context: .
+    container_name: meshsense
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    environment:
+      ADDRESS: "${MESHSENSE_RADIO_ADDRESS:-192.168.0.150}"
+      ACCESS_KEY: "${MESHSENSE_ACCESS_KEY:?Set MESHSENSE_ACCESS_KEY in .env}"
+      HEADLESS: "1"
+      PORT: "5920"
+    expose:
+      - "5920"
+    volumes:
+      - meshsense-data:/home/meshsense
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    shm_size: "256m"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  proxy:
+    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    container_name: meshsense-proxy
+    init: true
+    restart: unless-stopped
+    depends_on:
+      meshsense:
+        condition: service_healthy
+    environment:
+      MESHSENSE_ADMIN_PASSWORD: "${MESHSENSE_ACCESS_KEY:?Set MESHSENSE_ACCESS_KEY in .env}"
+    entrypoint:
+      - /usr/local/bin/meshsense-proxy-start
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./proxy-entrypoint.sh:/usr/local/bin/meshsense-proxy-start:ro
+    read_only: true
+    tmpfs:
+      - /config:rw,noexec,nosuid,size=8m
+      - /data:rw,noexec,nosuid,size=8m
+      - /tmp:rw,noexec,nosuid,size=8m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://127.0.0.1:8080/healthz && wget -q --spider http://meshsense:5920/state
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  meshsense-data:

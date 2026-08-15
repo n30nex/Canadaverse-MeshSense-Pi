@@ -1,0 +1,59 @@
+:8080 {
+	route {
+		@insecure header X-Forwarded-Proto http
+		redir @insecure https://{host}{uri} 308
+
+		route /admin-login {
+			basic_auth bcrypt "MeshSense Admin" {
+				admin {$MESHSENSE_ADMIN_HASH}
+			}
+			redir https://{host}/ 302
+		}
+
+		@admin header Authorization *
+		handle @admin {
+			basic_auth bcrypt "MeshSense Admin" {
+				admin {$MESHSENSE_ADMIN_HASH}
+			}
+			header {
+				Cache-Control "private, no-store"
+				Strict-Transport-Security "max-age=31536000; includeSubDomains"
+				X-Content-Type-Options "nosniff"
+				X-Frame-Options "DENY"
+				Referrer-Policy "no-referrer"
+			}
+			reverse_proxy meshsense:5920 {
+				header_up X-MeshSense-Admin "1"
+				header_up -Authorization
+			}
+		}
+
+		handle /healthz {
+			respond "ok" 200
+		}
+
+		@anonymousWrite method POST PUT PATCH DELETE
+		handle @anonymousWrite {
+			respond "MeshSense public view is read-only" 405
+		}
+
+		@anonymousProtected path /installUpdate /checkUpdate /consoleLog /deviceConfig
+		handle @anonymousProtected {
+			respond "Admin login required" 403
+		}
+
+		handle {
+			header {
+				Cache-Control "no-store"
+				Strict-Transport-Security "max-age=31536000; includeSubDomains"
+				X-Content-Type-Options "nosniff"
+				X-Frame-Options "DENY"
+				Referrer-Policy "no-referrer"
+			}
+			reverse_proxy meshsense:5920 {
+				header_up X-MeshSense-Admin "0"
+				header_up -Authorization
+			}
+		}
+	}
+}

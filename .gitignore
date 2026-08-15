@@ -1,0 +1,6 @@
+.env
+backups/
+public/
+public-api/
+__pycache__/
+*.pyc
