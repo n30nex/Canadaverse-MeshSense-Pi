@@ -4,16 +4,17 @@ FROM debian:bookworm-slim AS appimage
 
 ARG MESHSENSE_URL="https://affirmatech.com/download/meshsense/meshsense-beta-arm64.AppImage"
 ARG MESHSENSE_SHA256="04764cf33481ada042784b2c7b0b5a98e78cd0bb6b903487c1f66a41d105553f"
+# The launcher is an ARM64 ELF. Keep this Type-2 SquashFS offset paired with the pinned hash.
+ARG MESHSENSE_SQUASHFS_OFFSET="197808"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl libfuse2 nodejs python3-minimal zlib1g-dev \
+    && apt-get install -y --no-install-recommends ca-certificates curl nodejs python3-minimal squashfs-tools zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp/meshsense
 RUN curl --fail --location --retry 3 --output meshsense.AppImage "$MESHSENSE_URL" \
     && echo "$MESHSENSE_SHA256  meshsense.AppImage" | sha256sum --check --strict \
-    && chmod +x meshsense.AppImage \
-    && ./meshsense.AppImage --appimage-extract >/dev/null \
+    && unsquashfs -no-progress -offset "$MESHSENSE_SQUASHFS_OFFSET" meshsense.AppImage >/dev/null \
     && test -x squashfs-root/AppRun
 
 COPY patch-meshsense.py admin-login.js cleanup-sw.js /tmp/meshsense-patch/
