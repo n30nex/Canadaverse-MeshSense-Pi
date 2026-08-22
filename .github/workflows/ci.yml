@@ -68,18 +68,13 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Build exact ARM64 service image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/arm64
-          push: false
-          tags: canadaverse/meshsense:ci-${{ github.sha }}
-          outputs: type=oci,dest=/tmp/meshsense-arm64.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-          sbom: false
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            --file Dockerfile \
+            --tag "canadaverse/meshsense:ci-${{ github.sha }}" \
+            --output type=oci,dest=/tmp/meshsense-arm64.tar \
+            .
 
       - name: Verify image export
         run: test -s /tmp/meshsense-arm64.tar
