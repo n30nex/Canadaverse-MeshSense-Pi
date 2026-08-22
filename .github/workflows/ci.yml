@@ -1,0 +1,97 @@
+name: MeshSense CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshsense-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Check source syntax
+        run: |
+          python -m py_compile \
+            patch-meshsense.py \
+            verify-public-ui.py \
+            verify-public-websocket.py \
+            verify-live-packet-events.py
+          node --check admin-login.js
+          node --check cleanup-sw.js
+          sh -n entrypoint.sh proxy-entrypoint.sh verify-live-admin.sh
+
+      - name: Validate Compose contract
+        run: |
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
+          docker compose config --quiet
+
+      - name: Validate Caddy policy
+        env:
+          CADDY_IMAGE: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+        run: |
+          admin_hash="$(docker run --rm "$CADDY_IMAGE" caddy hash-password --plaintext ci-only-password)"
+          docker run --rm \
+            -e MESHSENSE_ADMIN_HASH="$admin_hash" \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            "$CADDY_IMAGE" \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build exact ARM64 service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/arm64
+          push: false
+          tags: canadaverse/meshsense:ci-${{ github.sha }}
+          outputs: type=oci,dest=/tmp/meshsense-arm64.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+      - name: Verify image export
+        run: test -s /tmp/meshsense-arm64.tar
+
+  required-service:
+    if: always()
+    needs:
+      - contract-tests
+      - image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require complete service build
+        run: |
+          test "${{ needs.contract-tests.result }}" = "success"
+          test "${{ needs.image.result }}" = "success"
