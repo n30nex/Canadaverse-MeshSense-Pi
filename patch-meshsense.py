@@ -310,6 +310,10 @@ bundle = replace_once(
                 await connection.configure();
             }
             catch (error) {
+                if (connectionStatus.value == 'connected') {
+                    console.warn('[meshtastic] Configuration request ended after device recovery completed');
+                    return;
+                }
                 console.error('[meshtastic] Device configuration refresh failed', String(error));
                 setAutoTraceStatus({ lastError: 'reconfigure-failed' });
             }
