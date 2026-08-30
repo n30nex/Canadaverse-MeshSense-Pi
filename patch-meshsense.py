@@ -387,18 +387,6 @@ bundle = replace_once(
     """let queueProcessing = false;
 async function processTraceRoutes() {
     queueProcessing = true;
-    if (connectionStatus.value !== 'connected') {
-        for (const queued of pendingTraceroutes.value)
-            delete traceRouteLog[queued];
-        pendingTraceroutes.set([]);
-        queueProcessing = false;
-        setAutoTraceStatus({
-            pending: 0,
-            skippedReason: 'disconnected',
-            lastError: 'radio-unreachable'
-        });
-        return;
-    }
     let destination = pendingTraceroutes.value[0];
     console.log('[meshtastic] Sending Traceroute for', destination);
     packets.push({
@@ -426,6 +414,18 @@ function setAutoTraceStatus(changes) {
 }
 async function processTraceRoutes() {
     queueProcessing = true;
+    if (connectionStatus.value !== 'connected') {
+        for (const queued of pendingTraceroutes.value)
+            delete traceRouteLog[queued];
+        pendingTraceroutes.set([]);
+        queueProcessing = false;
+        setAutoTraceStatus({
+            pending: 0,
+            skippedReason: 'disconnected',
+            lastError: 'radio-unreachable'
+        });
+        return;
+    }
     let destination = pendingTraceroutes.value[0];
     if (!destination) {
         queueProcessing = false;
