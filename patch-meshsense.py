@@ -288,12 +288,9 @@ bundle = replace_once(
 """,
     """        else if (e == 7) {
             connectionStatus.set('connected');
-            radioReconnectStartedAt = 0;
             setAutoTraceStatus({ lastError: '', skippedReason: '' });
         }
         else if (e == 4) {
-            if (!radioReconnectStartedAt)
-                radioReconnectStartedAt = Date.now();
             connectionStatus.set('reconnecting');
             if (connection instanceof HttpConnection) {
                 for (const destination of pendingTraceroutes.value)
@@ -308,13 +305,6 @@ bundle = replace_once(
             }
         }
         else if (e == 5 && connectionStatus.value == 'reconnecting' && connection instanceof HttpConnection) {
-            const outageMs = radioReconnectStartedAt ? Date.now() - radioReconnectStartedAt : 0;
-            radioReconnectStartedAt = 0;
-            if (outageMs < 10000) {
-                connectionStatus.set('connected');
-                setAutoTraceStatus({ lastError: '', skippedReason: '' });
-                return;
-            }
             console.log('[meshtastic] HTTP transport restored, refreshing device configuration');
             try {
                 await connection.configure();
@@ -355,7 +345,6 @@ const autoTraceConfig = Object.freeze({
     maxChannelUtilization: autoTraceNumber('MESHSENSE_AUTO_TRACE_CHANNEL_UTIL_MAX', 18, 5, 90)
 });
 let globalTracerouteRateLimitSec = autoTraceConfig.intervalSec;
-let radioReconnectStartedAt = 0;
 if (tracerouteRateLimit.value !== autoTraceConfig.nodeMinutes)
     tracerouteRateLimit.set(autoTraceConfig.nodeMinutes);
 if (automaticTraceroutes.value !== autoTraceConfig.enabled)
