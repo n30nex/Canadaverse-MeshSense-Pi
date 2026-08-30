@@ -11,6 +11,7 @@ set -a
 . "$env_file"
 set +a
 : "${MESHSENSE_ACCESS_KEY:?Missing MESHSENSE_ACCESS_KEY}"
+expected_radio="${MESHSENSE_RADIO_ADDRESS:-192.168.0.151}"
 printf 'user = "admin:%s"\n' "$MESHSENSE_ACCESS_KEY" >"$auth_file"
 unset MESHSENSE_ACCESS_KEY
 
@@ -21,7 +22,8 @@ test "$login_result" = "302 https://meshmon.canadaverse.org/" || {
 }
 
 curl --config "$auth_file" -fsS "$base_url/state" \
-  | jq -e '(.accessKey | length) > 0 and (.address == "192.168.0.150") and (.connectionStatus == "connected")' \
+  | jq -e --arg address "$expected_radio" \
+      '(.accessKey | length) > 0 and (.address == $address) and (.connectionStatus == "connected")' \
   >/dev/null
 
 set +e

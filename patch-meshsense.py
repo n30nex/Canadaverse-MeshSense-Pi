@@ -293,6 +293,10 @@ bundle = replace_once(
         else if (e == 4) {
             connectionStatus.set('reconnecting');
             if (connection instanceof HttpConnection) {
+                if (traceQueueTimer) {
+                    clearTimeout(traceQueueTimer);
+                    traceQueueTimer = null;
+                }
                 for (const destination of pendingTraceroutes.value)
                     delete traceRouteLog[destination];
                 pendingTraceroutes.set([]);
@@ -398,6 +402,7 @@ async function processTraceRoutes() {
 async function requestPosition(destination) {
 """,
     """let queueProcessing = false;
+let traceQueueTimer = null;
 function setAutoTraceStatus(changes) {
     autoTraceStatus.set({
         ...autoTraceStatus.value,
@@ -449,9 +454,11 @@ async function processTraceRoutes() {
     }
     pendingTraceroutes.shift();
     setAutoTraceStatus({});
-    setTimeout(() => {
+    traceQueueTimer = setTimeout(() => {
+        traceQueueTimer = null;
         pendingTraceroutes.value.length ? processTraceRoutes() : (queueProcessing = false);
     }, globalTracerouteRateLimitSec * 1000);
+    traceQueueTimer.unref?.();
 }
 function autoTraceDistanceKm(latitude, longitude) {
     const earthRadiusKm = 6371;

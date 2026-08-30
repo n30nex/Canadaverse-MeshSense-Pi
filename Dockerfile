@@ -24,6 +24,8 @@ RUN python3 /tmp/meshsense-patch/patch-meshsense.py \
         squashfs-root/resources/app.asar.unpacked/resources/api/index.cjs \
     && grep -Fq 'Configuration request ended after device recovery completed' \
         squashfs-root/resources/app.asar.unpacked/resources/api/index.cjs \
+    && grep -Fq 'clearTimeout(traceQueueTimer)' \
+        squashfs-root/resources/app.asar.unpacked/resources/api/index.cjs \
     && grep -Fq "lastError: 'radio-unreachable'" \
         squashfs-root/resources/app.asar.unpacked/resources/api/index.cjs \
     && install -m 0644 /tmp/meshsense-patch/admin-login.js \
