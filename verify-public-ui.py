@@ -19,11 +19,17 @@ def fetch(path: str) -> str:
 
 
 root = fetch("/")
-assert "<title>MeshSense</title>" in root
+assert "<title>Canadaverse Signal Watch · Live Mesh</title>" in root
 assert 'src="/admin-login.js"' in root
+assert 'href="/canadaverse-emblem.svg"' in root
 
 wrapper = fetch("/admin-login.js")
 assert "rcr-has-access-bar" in wrapper
+assert "Canadaverse Signal Watch" in wrapper
+assert "canadaverse-emblem.svg" in wrapper
+assert "LIVE MESH" in wrapper
+assert "rcr-liveboard" in wrapper
+assert "rcr-node-stat" in wrapper
 assert "Admin controls" in wrapper
 assert "serviceWorker.getRegistrations" in wrapper
 assert "rcr-meshsense-map-view-v3" in wrapper
@@ -32,6 +38,11 @@ assert "rcr-admin-only" in wrapper
 assert "rcr-packet-pulse" in wrapper
 assert "rcr-map-key" in wrapper
 assert "meshsense:packet" in wrapper
+assert "@media (max-width: 560px)" in wrapper
+assert "@media (max-width: 390px)" in wrapper
+assert "@media (prefers-reduced-motion: reduce)" in wrapper
+assert "panel.setAttribute('aria-label', 'Canadaverse Signal Watch')" in wrapper
+assert "brand.setAttribute('aria-label', 'Visit Canadaverse')" in wrapper
 
 asset_match = re.search(r'src="(/assets/[^"]+\.js)"', root)
 assert asset_match
@@ -46,13 +57,18 @@ cleanup_worker = fetch("/sw.js")
 assert "registration.unregister" in cleanup_worker
 
 print(json.dumps({
-    "ui": "MeshSense",
+    "ui": "Canadaverse Signal Watch",
+    "brand": "ok",
+    "live_status": "ok",
     "access_bar": "ok",
     "map_default": "ok",
     "dark_theme": "ok",
     "read_only_ui": "ok",
     "packet_pulses": "ok",
     "known_links": "ok",
+    "responsive_css": "ok",
+    "reduced_motion": "ok",
+    "accessibility_labels": "ok",
     "missing_route_guard": "ok",
     "tile_cache_bust": "ok",
     "worker_cleanup": "ok",

@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m py_compile \
             patch-meshsense.py \
+            verify-auto-trace.py \
             verify-public-ui.py \
             verify-public-websocket.py \
             verify-live-packet-events.py

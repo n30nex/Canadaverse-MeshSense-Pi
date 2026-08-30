@@ -20,6 +20,20 @@ def positioned_nodes(state: dict) -> set[int]:
     return result
 
 
+def packet_updates(data: dict) -> list[dict]:
+    """Normalize MeshSense's single-packet upserts and full-list sets."""
+    args = data.get("args") or []
+    if not args:
+        return []
+
+    value = args[0]
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [packet for packet in value if isinstance(packet, dict)]
+    return []
+
+
 async def verify() -> None:
     async with websockets.connect(
         WS_URL,
@@ -43,7 +57,7 @@ async def verify() -> None:
             if message.get("event") != "state" or data.get("name") != "packets":
                 continue
 
-            packets = (data.get("args") or [[]])[0]
+            packets = packet_updates(data)
             if not packets:
                 continue
             packet = max(packets, key=lambda item: item.get("rxTime") or 0)

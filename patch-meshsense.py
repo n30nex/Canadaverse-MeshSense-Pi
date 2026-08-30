@@ -276,9 +276,313 @@ for route, value in (("consoleLog", "consoleLog"), ("deviceConfig", "deviceConfi
         f"protect {route}",
     )
 
+bundle = replace_once(
+    bundle,
+    """        else if (e == 7) {
+            connectionStatus.set('connected');
+            // setTime()
+            // } else if (e == 4) {
+            // await disconnect()
+        }
+        else if (e == 2) {
+""",
+    """        else if (e == 7) {
+            connectionStatus.set('connected');
+            radioReconnectStartedAt = 0;
+            setAutoTraceStatus({ lastError: '', skippedReason: '' });
+        }
+        else if (e == 4) {
+            if (!radioReconnectStartedAt)
+                radioReconnectStartedAt = Date.now();
+            connectionStatus.set('reconnecting');
+            if (connection instanceof HttpConnection) {
+                for (const destination of pendingTraceroutes.value)
+                    delete traceRouteLog[destination];
+                pendingTraceroutes.set([]);
+                queueProcessing = false;
+                setAutoTraceStatus({
+                    pending: 0,
+                    skippedReason: 'disconnected',
+                    lastError: 'radio-unreachable'
+                });
+            }
+        }
+        else if (e == 5 && connectionStatus.value == 'reconnecting' && connection instanceof HttpConnection) {
+            const outageMs = radioReconnectStartedAt ? Date.now() - radioReconnectStartedAt : 0;
+            radioReconnectStartedAt = 0;
+            if (outageMs < 10000) {
+                connectionStatus.set('connected');
+                setAutoTraceStatus({ lastError: '', skippedReason: '' });
+                return;
+            }
+            console.log('[meshtastic] HTTP transport restored, refreshing device configuration');
+            try {
+                await connection.configure();
+            }
+            catch (error) {
+                console.error('[meshtastic] Device configuration refresh failed', String(error));
+                setAutoTraceStatus({ lastError: 'reconfigure-failed' });
+            }
+        }
+        else if (e == 2) {
+""",
+    "recover HTTP configuration after radio return",
+)
+
+bundle = replace_once(
+    bundle,
+    """let traceRouteLog = {};
+let globalTracerouteRateLimitSec = 60;
+if (tracerouteRateLimit.value < 15)
+    tracerouteRateLimit.set(15);
+let deviceConfig = {};
+""",
+    """let traceRouteLog = {};
+function autoTraceNumber(name, fallback, minimum, maximum) {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback;
+}
+const autoTraceConfig = Object.freeze({
+    enabled: process.env.MESHSENSE_AUTO_TRACE_ENABLED !== '0',
+    intervalSec: autoTraceNumber('MESHSENSE_AUTO_TRACE_INTERVAL_SECONDS', 60, 60, 600),
+    nodeMinutes: autoTraceNumber('MESHSENSE_AUTO_TRACE_NODE_MINUTES', 45, 30, 1440),
+    maxAgeMinutes: autoTraceNumber('MESHSENSE_AUTO_TRACE_MAX_AGE_MINUTES', 360, 30, 1440),
+    radiusKm: autoTraceNumber('MESHSENSE_AUTO_TRACE_RADIUS_KM', 35, 1, 250),
+    centerLat: autoTraceNumber('MESHSENSE_AUTO_TRACE_CENTER_LAT', 43.4516, -90, 90),
+    centerLon: autoTraceNumber('MESHSENSE_AUTO_TRACE_CENTER_LON', -80.4925, -180, 180),
+    maxQueue: autoTraceNumber('MESHSENSE_AUTO_TRACE_MAX_QUEUE', 6, 1, 12),
+    maxNodes: autoTraceNumber('MESHSENSE_AUTO_TRACE_MAX_NODES', 48, 1, 100),
+    maxChannelUtilization: autoTraceNumber('MESHSENSE_AUTO_TRACE_CHANNEL_UTIL_MAX', 18, 5, 90)
+});
+let globalTracerouteRateLimitSec = autoTraceConfig.intervalSec;
+let radioReconnectStartedAt = 0;
+if (tracerouteRateLimit.value !== autoTraceConfig.nodeMinutes)
+    tracerouteRateLimit.set(autoTraceConfig.nodeMinutes);
+if (automaticTraceroutes.value !== autoTraceConfig.enabled)
+    automaticTraceroutes.set(autoTraceConfig.enabled);
+let autoTraceStatus = new State('autoTraceStatus', {
+    enabled: autoTraceConfig.enabled,
+    eligible: 0,
+    pending: 0,
+    sent: 0,
+    responses: 0,
+    channelUtilization: 0,
+    lastSweepAt: 0,
+    lastQueuedAt: 0,
+    lastSentAt: 0,
+    lastResponseAt: 0,
+    lastTarget: 0,
+    lastResponseFrom: 0,
+    lastError: '',
+    skippedReason: 'starting',
+    config: autoTraceConfig
+}, { hideLog: true });
+let deviceConfig = {};
+""",
+    "configure bounded automatic traceroutes",
+)
+
+bundle = replace_once(
+    bundle,
+    """let queueProcessing = false;
+async function processTraceRoutes() {
+    queueProcessing = true;
+    if (connectionStatus.value !== 'connected') {
+        for (const queued of pendingTraceroutes.value)
+            delete traceRouteLog[queued];
+        pendingTraceroutes.set([]);
+        queueProcessing = false;
+        setAutoTraceStatus({
+            pending: 0,
+            skippedReason: 'disconnected',
+            lastError: 'radio-unreachable'
+        });
+        return;
+    }
+    let destination = pendingTraceroutes.value[0];
+    console.log('[meshtastic] Sending Traceroute for', destination);
+    packets.push({
+        from: myNodeNum.value,
+        to: destination,
+        rxTime: Date.now() / 1000,
+        channel: '',
+        data: { $typeName: 'RouteRequest' }
+    });
+    connection.traceRoute(destination);
+    pendingTraceroutes.shift();
+    setTimeout(() => {
+        pendingTraceroutes.value.length ? processTraceRoutes() : (queueProcessing = false);
+    }, globalTracerouteRateLimitSec * 1000);
+}
+async function requestPosition(destination) {
+""",
+    """let queueProcessing = false;
+function setAutoTraceStatus(changes) {
+    autoTraceStatus.set({
+        ...autoTraceStatus.value,
+        ...changes,
+        pending: pendingTraceroutes.value.length
+    });
+}
+async function processTraceRoutes() {
+    queueProcessing = true;
+    let destination = pendingTraceroutes.value[0];
+    if (!destination) {
+        queueProcessing = false;
+        setAutoTraceStatus({ pending: 0 });
+        return;
+    }
+    console.log('[meshtastic] Sending Traceroute for', destination);
+    packets.push({
+        from: myNodeNum.value,
+        to: destination,
+        rxTime: Date.now() / 1000,
+        channel: '',
+        data: { $typeName: 'RouteRequest' }
+    });
+    try {
+        await connection.traceRoute(destination);
+        setAutoTraceStatus({
+            sent: autoTraceStatus.value.sent + 1,
+            lastSentAt: Date.now(),
+            lastTarget: destination,
+            lastError: ''
+        });
+    }
+    catch (error) {
+        delete traceRouteLog[destination];
+        console.error('[meshtastic] Traceroute send failed', destination, String(error));
+        setAutoTraceStatus({ lastError: 'send-failed' });
+    }
+    pendingTraceroutes.shift();
+    setAutoTraceStatus({});
+    setTimeout(() => {
+        pendingTraceroutes.value.length ? processTraceRoutes() : (queueProcessing = false);
+    }, globalTracerouteRateLimitSec * 1000);
+}
+function autoTraceDistanceKm(latitude, longitude) {
+    const earthRadiusKm = 6371;
+    const toRadians = (degrees) => degrees * Math.PI / 180;
+    const latitudeDelta = toRadians(latitude - autoTraceConfig.centerLat);
+    const longitudeDelta = toRadians(longitude - autoTraceConfig.centerLon);
+    const value = Math.sin(latitudeDelta / 2) ** 2 +
+        Math.cos(toRadians(autoTraceConfig.centerLat)) * Math.cos(toRadians(latitude)) *
+        Math.sin(longitudeDelta / 2) ** 2;
+    return 2 * earthRadiusKm * Math.asin(Math.sqrt(value));
+}
+function autoTraceChannelUtilization() {
+    const node = getMyNode();
+    const values = [
+        node?.localStats?.channelUtilization,
+        node?.deviceMetrics?.channelUtilization
+    ].map(Number).filter(Number.isFinite);
+    return values.length ? Math.max(...values) : 0;
+}
+function automaticTraceCandidates(now) {
+    const cutoff = now / 1000 - autoTraceConfig.maxAgeMinutes * 60;
+    const minimumAge = autoTraceConfig.nodeMinutes * 60000;
+    const queued = new Set(pendingTraceroutes.value);
+    return nodes.value
+        .filter((node) => {
+        const latitude = Number(node?.position?.latitudeI) / 10000000;
+        const longitude = Number(node?.position?.longitudeI) / 10000000;
+        return Number.isInteger(node?.num) &&
+            node.num > 0 &&
+            node.num !== myNodeNum.value &&
+            node.num !== broadcastId &&
+            node.viaMqtt !== true &&
+            Number(node.lastHeard || 0) >= cutoff &&
+            Number.isFinite(latitude) && latitude !== 0 &&
+            Number.isFinite(longitude) && longitude !== 0 &&
+            autoTraceDistanceKm(latitude, longitude) <= autoTraceConfig.radiusKm &&
+            !queued.has(node.num) &&
+            (!traceRouteLog[node.num] || now - traceRouteLog[node.num] >= minimumAge);
+    })
+        .sort((left, right) => {
+        const missingTrace = Number(!right.trace) - Number(!left.trace);
+        if (missingTrace)
+            return missingTrace;
+        const oldestTrace = (traceRouteLog[left.num] || 0) - (traceRouteLog[right.num] || 0);
+        if (oldestTrace)
+            return oldestTrace;
+        return Number(right.lastHeard || 0) - Number(left.lastHeard || 0);
+    })
+        .slice(0, autoTraceConfig.maxNodes);
+}
+function runAutomaticTraceSweep() {
+    const now = Date.now();
+    const channelUtilization = autoTraceChannelUtilization();
+    const candidates = automaticTraceCandidates(now);
+    const baseStatus = {
+        enabled: autoTraceConfig.enabled && automaticTraceroutes.value,
+        eligible: candidates.length,
+        channelUtilization,
+        lastSweepAt: now
+    };
+    if (!baseStatus.enabled) {
+        setAutoTraceStatus({ ...baseStatus, skippedReason: 'disabled' });
+        return;
+    }
+    if (connectionStatus.value !== 'connected') {
+        setAutoTraceStatus({ ...baseStatus, skippedReason: 'disconnected' });
+        return;
+    }
+    if (channelUtilization >= autoTraceConfig.maxChannelUtilization) {
+        setAutoTraceStatus({ ...baseStatus, skippedReason: 'channel-busy' });
+        return;
+    }
+    const capacity = Math.max(0, autoTraceConfig.maxQueue - pendingTraceroutes.value.length);
+    const selected = candidates.slice(0, capacity);
+    for (const node of selected)
+        traceRoute(node.num);
+    setAutoTraceStatus({
+        ...baseStatus,
+        lastQueuedAt: selected.length ? now : autoTraceStatus.value.lastQueuedAt,
+        skippedReason: selected.length ? '' : (capacity ? 'no-eligible-nodes' : 'queue-full')
+    });
+    if (selected.length)
+        console.log('[meshtastic] Automatic traceroute sweep queued', selected.length, 'local nodes');
+}
+const autoTraceSweepTimer = setInterval(runAutomaticTraceSweep, autoTraceConfig.intervalSec * 1000);
+autoTraceSweepTimer.unref?.();
+const autoTraceStartupTimer = setTimeout(runAutomaticTraceSweep, 30000);
+autoTraceStartupTimer.unref?.();
+async function requestPosition(destination) {
+""",
+    "add local automatic traceroute scheduler",
+)
+
+bundle = replace_once(
+    bundle,
+    """        if (e.from && data) {
+            let node = nodes.upsert({ num: e.from, trace: data });
+""",
+    """        if (e.from && data) {
+            setAutoTraceStatus({
+                responses: autoTraceStatus.value.responses + 1,
+                lastResponseAt: Date.now(),
+                lastResponseFrom: e.from
+            });
+            let node = nodes.upsert({ num: e.from, trace: data });
+""",
+    "record automatic traceroute responses",
+)
+
 bundle_path.write_text(bundle, encoding="utf-8")
 
 index = index_path.read_text(encoding="utf-8")
+index = replace_once(
+    index,
+    "<title>MeshSense</title>",
+    "<title>Canadaverse Signal Watch · Live Mesh</title>",
+    "brand page title",
+)
+index = replace_once(
+    index,
+    '<link rel="icon" type="image/x-icon" href="/favicon.ico" />',
+    '<link rel="icon" type="image/svg+xml" href="/canadaverse-emblem.svg" />',
+    "brand favicon",
+)
 index = replace_once(
     index,
     """  </body>
