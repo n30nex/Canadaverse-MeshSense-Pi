@@ -1,6 +1,6 @@
 services:
   meshsense:
-    image: canadaverse/meshsense:1.1.0-beta-arm64-04764cf3-r13
+    image: canadaverse/meshsense:1.1.0-beta-arm64-04764cf3-r14
     build:
       context: .
     container_name: meshsense
